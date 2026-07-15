@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>카카오페이지 이용권 장부</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow"><span class="dot"></span>KAKAOPAGE · TICKET LEDGER</div>
+  <h1>카카오페이지 이용권 장부</h1>
+  <p class="sub">저장한 <b>이용권 내역</b> HTML을 올리면 실제로 캐시가 나간 금액과 이용권 종류별 사용 내역을 확인할 수 있어요.<br>
+  <b>기다무 대여권 · 선물 무료 대여권 · 신규혜택 무료 대여권</b>은 금액 계산에서 자동으로 제외됩니다.
+  <br><b>제목이 같은 웹툰과 웹소설은 같은 작품으로 취급</b>됩니다. (분리 기능 개발 중)</p>
+
+  <details class="help">
+    <summary>사용법 / 도움말 펼치기</summary>
+    <div class="help-body">
+      <h4>1. 데이터 넣는 방법</h4>
+      이 페이지는 <b>HTML 파일 업로드만</b> 지원합니다. 카카오페이지 <code>page.kakao.com/history/ticket/</code> 페이지를 브라우저에서
+      Ctrl+S(다른 이름으로 저장)한 뒤 올려주세요. 내역이 길면 스크롤을 끝까지 내려 전체를 로딩한 다음 저장하는 걸 추천해요.
+      여러 시점에 나눠 저장했다면 한 번에 여러 개 올려도 됩니다.
+
+      <h4>2. 자동으로 처리되는 것들</h4>
+      <ul>
+        <li><b>기다무 대여권 / 선물 무료 대여권 / 신규혜택 무료 대여권</b> → 총 결제액 계산에서 자동 제외 (건수는 따로 표시)</li>
+        <li>같은 작품의 여러 결제 항목 → 자동으로 묶어서 금액 합산</li>
+        <li>이용권 종류(소장권/대여권/기타)별 비중 자동 집계</li>
+      </ul>
+
+      <h4>3. 데이터는 어디에 저장되나요</h4>
+      업로드한 파일은 <b>서버로 전송되지 않고 사용자의 브라우저 안에서만</b> 처리됩니다. 새로고침하면 초기화되고,
+      원본 파일 자체는 저장되지 않으니 다시 열면 파일을 다시 올려야 해요.
+    </div>
+  </details>
+
+  <div id="drop">
+    <span class="ticket-ico">🎫</span>
+    <p>이용권 내역 HTML 파일을 올려주세요</p>
+    <small>카카오페이지 &gt; 이용권 내역 페이지에서 Ctrl+S로 저장한 파일 · 여러 개 올려도 됩니다 · 클릭하거나 끌어다 놓으세요</small>
+    <input id="fileInput" type="file" accept=".html,.htm" multiple>
+    <div id="fileList"></div>
+  </div>
+
+  <div id="resultArea">
+    <div class="ticket" id="ticketNode">
+      <div class="ticket-head">
+        <div class="brand">KAKAOPAGE <span>· 이용권 사용 내역</span></div>
+        <h2>이 용 권 사 용 확 인 서</h2>
+        <div class="no" id="ticketNo">NO. 000000</div>
+        <div class="notch l"></div><div class="notch r"></div>
+      </div>
+
+      <div class="ticket-body">
+        <div class="total-row">
+          <span class="total-label">TOTAL SPENT</span>
+          <span class="total-amount" id="totalAmount">₩0</span>
+        </div>
+        <div class="meta-row">
+          <span>결제 항목 <b id="paidCount">0</b>건</span>
+          <span>제외된 무료 이용권 <b id="freeCount">0</b>건</span>
+          <span>작품 <b id="workCount">0</b>편</span>
+        </div>
+
+        <table class="breakdown" id="breakdownTable">
+          <thead><tr><th>구분</th><th class="pct">금액 비율</th><th>금액</th></tr></thead>
+          <tbody id="breakdownBody"></tbody>
+        </table>
+
+        <div class="excluded-note" id="excludedNote"></div>
+
+        <div class="perf"><div class="notch l"></div><div class="notch r"></div></div>
+
+        <div class="work-list" id="workList" style="margin-top:16px;"></div>
+      </div>
+
+      <div class="ticket-foot">
+        <div class="thanks">이 용 해 주 셔 서 감 사 합 니 다</div>
+        <div class="disclaimer">카카오페이지 이용권 장부 · kakaopage-ticket-ledger<br>카카오페이지와 무관한 개인 제작 비공식 도구입니다</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" onclick="saveAsPNG()">🧾 확인서 PNG로 저장</button>
+      <button onclick="saveAsPDF()">📄 전체 내역 PDF로 저장</button>
+      <button class="ghost" onclick="resetAll()">전체 초기화</button>
+    </div>
+  </div>
+
+  <footer class="page-foot">✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -</footer>
+</div>
+
+<script>
+const EXCLUDED_TYPES = ['기다무 대여권', '선물 무료 대여권', '신규혜택 무료 대여권'];
+
+let entries = []; 
+
+document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files));
+const drop = document.getElementById('drop');
+drop.addEventListener('click', () => document.getElementById('fileInput').click());
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+function handleFiles(fileListObj){
+  const files = Array.from(fileListObj).filter(f => /\.html?$/i.test(f.name));
+  if(!files.length) return;
+  const listEl = document.getElementById('fileList');
+  Promise.all(files.map(f => f.text().then(text => {
+    const li = document.createElement('div');
+    li.textContent = '📄 ' + f.name;
+    listEl.appendChild(li);
+    return text;
+  }))).then(texts => {
+    texts.forEach(parseHtmlText);
+    render();
+  });
+}
+
+function parseHtmlText(htmlText){
+  const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+  const anchors = Array.from(doc.querySelectorAll('a[href*="/content/"]'));
+
+  anchors.forEach(a => {
+    const flexCol = a.querySelector('div.flex.flex-1.flex-col') || a.firstElementChild;
+    if(!flexCol || flexCol.children.length < 2) return;
+
+    const rowTitleAmount = flexCol.children[0];
+    const rowTicket = flexCol.children[1];
+    const rowDateStatus = flexCol.children[2];
+
+    let titleEl, amountEl;
+    if(rowTitleAmount && rowTitleAmount.children.length >= 2){
+      titleEl = rowTitleAmount.children[0].querySelector('span');
+      amountEl = rowTitleAmount.children[1].querySelector('span');
+    }
+    const ticketEl = rowTicket ? rowTicket.querySelector('span') : null;
+
+    let dateEl, statusEl;
+    if(rowDateStatus && rowDateStatus.children.length >= 1){
+      dateEl = rowDateStatus.children[0] ? rowDateStatus.children[0].querySelector('span') : null;
+      statusEl = rowDateStatus.children[1] ? rowDateStatus.children[1].querySelector('span') : null;
+    }
+
+    if(!titleEl || !amountEl || !ticketEl) return;
+
+    const work = titleEl.textContent.trim();
+
+    if (work.includes('카카페 매거진')) return;
+    
+    const amountText = amountEl.textContent.trim();
+    const amount = parseInt(amountText.replace(/[^0-9]/g,''), 10) || 0;
+    const ticketRaw = ticketEl.textContent.trim();
+    const m = ticketRaw.match(/^(.*?)\s*(\d+)\s*장$/);
+    const ticketName = m ? m[1].trim() : ticketRaw;
+    const count = m ? parseInt(m[2], 10) : 1;
+    const date = dateEl ? dateEl.textContent.trim() : '';
+    const status = statusEl ? statusEl.textContent.trim() : '';
+    const excluded = EXCLUDED_TYPES.includes(ticketName);
+
+    entries.push({ work, ticketName, count, amount, date, status, excluded });
+  });
+}
+
+function fmt(n){ return '₩' + n.toLocaleString('ko-KR'); }
+
+function render(){
+  if(!entries.length) return;
+  document.getElementById('resultArea').style.display = 'block';
+
+  const paid = entries.filter(e => !e.excluded);
+  const excluded = entries.filter(e => e.excluded);
+
+  const totalPaid = paid.reduce((s,e) => s + e.amount, 0);
+  document.getElementById('totalAmount').textContent = fmt(totalPaid);
+  document.getElementById('paidCount').textContent = paid.length;
+  document.getElementById('freeCount').textContent = excluded.length;
+
+  const works = new Set(entries.map(e => e.work));
+  document.getElementById('workCount').textContent = works.size;
+
+  document.getElementById('ticketNo').textContent = 'NO. ' + String(entries.length).padStart(6,'0');
+
+  const byType = {};
+  paid.forEach(e => { byType[e.ticketName] = (byType[e.ticketName]||0) + e.amount; });
+  const rows = Object.entries(byType).sort((a,b) => b[1]-a[1]);
+  const tbody = document.getElementById('breakdownBody');
+  tbody.innerHTML = '';
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--ink-faint);">결제 금액이 있는 이용권이 없습니다</td></tr>';
+  }
+  rows.forEach(([name, amt]) => {
+    const pct = totalPaid ? Math.round(amt/totalPaid*100) : 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${name}</td>
+      <td class="pct">${pct}%<div class="bar"><i style="width:${pct}%"></i></div></td>
+      <td>${fmt(amt)}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const excByType = {};
+  excluded.forEach(e => { excByType[e.ticketName] = (excByType[e.ticketName]||0) + e.count; });
+  const note = document.getElementById('excludedNote');
+  if(excluded.length){
+    const parts = Object.entries(excByType).map(([n,c]) => `<b>${n}</b> ${c}건`).join(' · ');
+    note.innerHTML = `금액 산정에서 제외된 이용권: ${parts} (총 ${excluded.length}건, ₩0 처리)`;
+  } else {
+    note.innerHTML = '금액 산정에서 제외된 무료/기다무 이용권이 없습니다.';
+  }
+
+  const workMap = {};
+  entries.forEach(e => {
+    if(!workMap[e.work]) workMap[e.work] = { amount:0, tickets:{} };
+    if(!e.excluded) workMap[e.work].amount += e.amount;
+    workMap[e.work].tickets[e.ticketName] = (workMap[e.work].tickets[e.ticketName]||0) + e.count;
+  });
+  const workListEl = document.getElementById('workList');
+  workListEl.innerHTML = '';
+  Object.entries(workMap)
+    .sort((a,b) => b[1].amount - a[1].amount)
+    .forEach(([name, data]) => {
+      const ticketSummary = Object.entries(data.tickets).map(([n,c]) => `${n} ${c}장`).join(' · ');
+      const div = document.createElement('div');
+      div.className = 'work';
+      div.innerHTML = `<div><div class="name">${name}</div><div class="tickets">${ticketSummary}</div></div>
+        <div class="amt ${data.amount === 0 ? 'zero' : ''}">${fmt(data.amount)}</div>`;
+      workListEl.appendChild(div);
+    });
+}
+
+function resetAll(){
+  entries = [];
+  document.getElementById('fileList').innerHTML = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('resultArea').style.display = 'none';
+}
+
+function copyPrompt(){
+  const text = document.getElementById('promptText').textContent;
+  navigator.clipboard.writeText(text);
+}
+
+function saveAsPNG(){
+  html2canvas(document.getElementById('ticketNode'), { backgroundColor:'#fffdf5', scale:2 }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = '카카오페이지_이용권_확인서.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+}
+
+function saveAsPDF(){
+  html2canvas(document.getElementById('ticketNode'), { backgroundColor:'#fffdf5', scale:2 }).then(canvas => {
+    const { jsPDF } = window.jspdf;
+    const imgW = 210;
+    const imgH = canvas.height * imgW / canvas.width;
+    const pdf = new jsPDF('p','mm','a4');
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 10, imgW, imgH);
+    pdf.save('카카오페이지_이용권_내역.pdf');
+  });
+}
+</script>
+</body>
+</html>
